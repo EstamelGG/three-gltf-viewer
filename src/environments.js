@@ -5,20 +5,15 @@ export const environments = [
 		path: null,
 	},
 	{
-		id: 'neutral', // THREE.RoomEnvironment
-		name: 'Neutral',
-		path: null,
+		id: 'wormhole-class-04-cube',
+		name: 'Wormhole Class 04',
+		path: './src/envImage/wormhole_class_04_cube',
+		format: '.cube',
 	},
 	{
-		id: 'venice-sunset',
-		name: 'Venice Sunset',
-		path: 'https://storage.googleapis.com/donmccurdy-static/venice_sunset_1k.exr',
-		format: '.exr',
-	},
-	{
-		id: 'footprint-court',
-		name: 'Footprint Court (HDR Labs)',
-		path: 'https://storage.googleapis.com/donmccurdy-static/footprint_court_2k.exr',
-		format: '.exr',
-	},
+		id: 'a13_cube',
+		name: 'Amarr',
+		path: './src/envImage/a13_cube',
+		format: '.cube',
+	}
 ];

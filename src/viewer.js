@@ -5,9 +5,12 @@ import {
 	Box3,
 	Cache,
 	Color,
+	CubeTextureLoader,
 	DirectionalLight,
 	GridHelper,
 	HemisphereLight,
+	LinearFilter,
+	LinearMipmapLinearFilter,
 	LoaderUtils,
 	LoadingManager,
 	PMREMGenerator,
@@ -409,25 +412,37 @@ export class Viewer {
 			(entry) => entry.name === this.state.environment,
 		)[0];
 
-		this.getCubeMapTexture(environment).then(({ envMap }) => {
+		this.getCubeMapTexture(environment).then(({ envMap, cubeTexture }) => {
 			this.scene.environment = envMap;
-			this.scene.background = this.state.background ? envMap : this.backgroundColor;
+			// 对于立方体贴图，如果可用，直接使用原始立方体贴图作为背景以获得更好的画质
+			// 否则使用PMREM转换后的环境贴图
+			if (this.state.background) {
+				this.scene.background = cubeTexture || envMap;
+			} else {
+				this.scene.background = this.backgroundColor;
+			}
 		});
 	}
 
 	getCubeMapTexture(environment) {
-		const { id, path } = environment;
+		const { id, path, format } = environment;
 
 		// neutral (THREE.RoomEnvironment)
 		if (id === 'neutral') {
-			return Promise.resolve({ envMap: this.neutralEnvironment });
+			return Promise.resolve({ envMap: this.neutralEnvironment, cubeTexture: null });
 		}
 
 		// none
 		if (id === '') {
-			return Promise.resolve({ envMap: null });
+			return Promise.resolve({ envMap: null, cubeTexture: null });
 		}
 
+		// Cube map format (6个方向的立方体贴图)
+		if (format === '.cube') {
+			return this.loadCubeMapFromFiles(path);
+		}
+
+		// EXR format (equirectangular)
 		return new Promise((resolve, reject) => {
 			new EXRLoader().load(
 				path,
@@ -435,7 +450,55 @@ export class Viewer {
 					const envMap = this.pmremGenerator.fromEquirectangular(texture).texture;
 					this.pmremGenerator.dispose();
 
-					resolve({ envMap });
+					resolve({ envMap, cubeTexture: null });
+				},
+				undefined,
+				reject,
+			);
+		});
+	}
+
+	/**
+	 * 从6个方向的文件加载立方体贴图
+	 * @param {string} basePath - 基础路径（不包含文件名）
+	 */
+	loadCubeMapFromFiles(basePath) {
+		return new Promise((resolve, reject) => {
+			// 立方体贴图的6个面顺序：posx, negx, posy, negy, posz, negz
+			const urls = [
+				`${basePath}/posx.jpg`, // +X
+				`${basePath}/negx.jpg`, // -X
+				`${basePath}/posy.jpg`, // +Y
+				`${basePath}/negy.jpg`, // -Y
+				`${basePath}/posz.jpg`, // +Z
+				`${basePath}/negz.jpg`, // -Z
+			];
+
+			const loader = new CubeTextureLoader(MANAGER);
+			loader.load(
+				urls,
+				(cubeTexture) => {
+					// 设置纹理过滤模式以提高画质
+					// 使用线性 mipmap 过滤以获得更好的画质
+					cubeTexture.minFilter = LinearMipmapLinearFilter;
+					cubeTexture.magFilter = LinearFilter;
+					cubeTexture.generateMipmaps = true;
+					cubeTexture.needsUpdate = true;
+
+					// 转换为PMREM格式用于环境贴图
+					// 使用临时场景来生成PMREM
+					const tempScene = new Scene();
+					tempScene.background = cubeTexture;
+					
+					// 生成PMREM环境贴图（用于光照）
+					const envMap = this.pmremGenerator.fromScene(tempScene).texture;
+					// 注意：不要在这里dispose PMREMGenerator，它会被重复使用
+					
+					// 对于背景显示，直接使用原始立方体贴图可以获得更好的画质
+					// 但为了保持一致性，我们仍然使用PMREM
+					// 如果需要更好的背景画质，可以考虑直接使用 cubeTexture
+					
+					resolve({ envMap, cubeTexture });
 				},
 				undefined,
 				reject,
